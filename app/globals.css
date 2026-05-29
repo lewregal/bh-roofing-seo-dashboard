@@ -5,3 +5,7 @@
 html { color-scheme: dark; }
 body { @apply bg-surface text-slate-100; }
 .light body { @apply bg-slate-50 text-slate-900; }
+
+.grid-label { background: transparent !important; border: none !important; box-shadow: none !important; color: #fff; font-weight: 700; }
+.grid-label::before { display: none !important; }
+.leaflet-container { background: #0f1626; }
