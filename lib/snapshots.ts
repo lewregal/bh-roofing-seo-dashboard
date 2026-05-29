@@ -1,3 +1,4 @@
+import { put, list, del } from "@vercel/blob";
 import type {
   KeywordMapResult, MapSnapshot, MapTrackerRow, MapTrendPoint,
 } from "@/lib/types";
@@ -26,4 +27,35 @@ export function buildTrends(history: MapSnapshot[]): Record<string, MapTrendPoin
     }
   }
   return out;
+}
+
+const PREFIX = "snapshots/";
+const KEEP = 100;
+
+export async function writeSnapshot(snapshot: MapSnapshot): Promise<void> {
+  const key = `${PREFIX}${snapshot.capturedAt}.json`;
+  await put(key, JSON.stringify(snapshot), {
+    access: "public",
+    contentType: "application/json",
+    addRandomSuffix: false,
+  });
+}
+
+export async function listSnapshots(): Promise<MapSnapshot[]> {
+  const { blobs } = await list({ prefix: PREFIX });
+  const sorted = blobs.sort((a, b) => a.pathname.localeCompare(b.pathname));
+  const recent = sorted.slice(-KEEP);
+  const out: MapSnapshot[] = [];
+  for (const b of recent) {
+    const res = await fetch(b.url);
+    if (res.ok) out.push((await res.json()) as MapSnapshot);
+  }
+  return out.sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
+}
+
+export async function pruneSnapshots(): Promise<void> {
+  const { blobs } = await list({ prefix: PREFIX });
+  const sorted = blobs.sort((a, b) => a.pathname.localeCompare(b.pathname));
+  const stale = sorted.slice(0, Math.max(0, sorted.length - KEEP));
+  if (stale.length) await del(stale.map((b) => b.url));
 }
