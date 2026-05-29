@@ -2167,7 +2167,7 @@ import { DecliningPanel } from "@/components/DecliningPanel";
 import { QueriesTable } from "@/components/QueriesTable";
 import { PagesTable } from "@/components/PagesTable";
 
-export const revalidate = 43200; // 12h ISR
+export const dynamic = "force-dynamic"; // render on demand; data cached 12h via unstable_cache
 
 export default async function Page({ searchParams }: { searchParams: Promise<{ range?: string }> }) {
   const { range } = await searchParams;
@@ -2196,7 +2196,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ r
 - [ ] **Step 2: Build**
 
 Run: `npm run build`
-Expected: build succeeds. Page `/` builds; it will error at request time only if env vars are missing, which is expected locally without credentials.
+Expected: build succeeds with `/` shown as `ƒ (Dynamic)` — server-rendered on demand. No build-time credentials needed; data fetching happens at request time via `unstable_cache`.
 
 - [ ] **Step 3: Commit**
 
