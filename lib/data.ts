@@ -9,6 +9,18 @@ import type { DashboardData } from "@/lib/types";
 
 const HALF_DAY = 60 * 60 * 12;
 
+// Empty GSC payload so the dashboard (map pack especially) still renders when
+// Search Console is unreachable or the service account is not yet authorized.
+const EMPTY_SUMMARY = { clicks: 0, impressions: 0, ctr: 0, position: 0 };
+const EMPTY_GSC = {
+  summary: summaryWithDelta(EMPTY_SUMMARY, EMPTY_SUMMARY),
+  timeseries: [],
+  topQueries: [],
+  topPages: [],
+  declines: [],
+  available: false,
+};
+
 async function loadGsc(todayIso: string, trendDays: number) {
   const cmp = comparePeriods(todayIso, SITE.dataLagDays, 28);
   const trendWindow = lastNDays(todayIso, SITE.dataLagDays, trendDays);
@@ -17,24 +29,30 @@ async function loadGsc(todayIso: string, trendDays: number) {
   const toOpts = (w: { start: string; end: string }, dims: string[], limit: number) =>
     ({ startDate: w.start, endDate: w.end, dimensions: dims, rowLimit: limit });
 
-  const [curRows, prevRows, tsRows, queryRows, pageRows, recentForDecline, priorForDecline] =
-    await Promise.all([
-      queryGsc(toOpts(cmp.current, [], 1)),
-      queryGsc(toOpts(cmp.previous, [], 1)),
-      queryGsc(toOpts(trendWindow, ["date"], 1000)),
-      queryGsc(toOpts(trendWindow, ["query"], 1000)),
-      queryGsc(toOpts(trendWindow, ["page"], 1000)),
-      queryGsc(toOpts(trendWindow, ["page"], 1000)),
-      queryGsc(toOpts(priorTrend, ["page"], 1000)),
-    ]);
+  try {
+    const [curRows, prevRows, tsRows, queryRows, pageRows, recentForDecline, priorForDecline] =
+      await Promise.all([
+        queryGsc(toOpts(cmp.current, [], 1)),
+        queryGsc(toOpts(cmp.previous, [], 1)),
+        queryGsc(toOpts(trendWindow, ["date"], 1000)),
+        queryGsc(toOpts(trendWindow, ["query"], 1000)),
+        queryGsc(toOpts(trendWindow, ["page"], 1000)),
+        queryGsc(toOpts(trendWindow, ["page"], 1000)),
+        queryGsc(toOpts(priorTrend, ["page"], 1000)),
+      ]);
 
-  return {
-    summary: summaryWithDelta(summarize(curRows), summarize(prevRows)),
-    timeseries: toTimeseries(tsRows),
-    topQueries: toQueryRows(queryRows, 20),
-    topPages: toPageRows(pageRows, 10),
-    declines: detectDeclines(recentForDecline, priorForDecline, 3),
-  };
+    return {
+      summary: summaryWithDelta(summarize(curRows), summarize(prevRows)),
+      timeseries: toTimeseries(tsRows),
+      topQueries: toQueryRows(queryRows, 20),
+      topPages: toPageRows(pageRows, 10),
+      declines: detectDeclines(recentForDecline, priorForDecline, 3),
+      available: true,
+    };
+  } catch (err) {
+    console.error("GSC load failed, rendering without organic data:", err);
+    return EMPTY_GSC;
+  }
 }
 
 function addDaysStr(iso: string, days: number): string {
@@ -44,19 +62,23 @@ function addDaysStr(iso: string, days: number): string {
 }
 
 async function loadMap() {
-  const history = await listSnapshots();
-  if (history.length === 0) {
-    return { keywords: [], tracker: [], trends: {}, capturedAt: null, available: false };
+  const empty = { keywords: [], tracker: [], trends: {}, capturedAt: null, available: false };
+  try {
+    const history = await listSnapshots();
+    if (history.length === 0) return empty;
+    const latest = history[history.length - 1];
+    const previous = history.length > 1 ? history[history.length - 2] : null;
+    return {
+      keywords: latest.keywords,
+      tracker: buildTracker(latest, previous),
+      trends: buildTrends(history),
+      capturedAt: latest.capturedAt,
+      available: true,
+    };
+  } catch (err) {
+    console.error("Map snapshot load failed:", err);
+    return empty;
   }
-  const latest = history[history.length - 1];
-  const previous = history.length > 1 ? history[history.length - 2] : null;
-  return {
-    keywords: latest.keywords,
-    tracker: buildTracker(latest, previous),
-    trends: buildTrends(history),
-    capturedAt: latest.capturedAt,
-    available: true,
-  };
 }
 
 export const getDashboardData = unstable_cache(
