@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   pctChange, summarize, summaryWithDelta, toTimeseries, toQueryRows, toPageRows,
+  detectDeclines,
 } from "@/lib/gsc";
 
 const rows = (n: number) =>
@@ -56,5 +57,32 @@ describe("gsc transforms", () => {
     const pr = toPageRows(rows(15), 10);
     expect(pr).toHaveLength(10);
     expect(pr[0].page).toBe("q14");
+  });
+});
+
+describe("detectDeclines", () => {
+  it("flags keys whose position worsened by >= threshold, sorted worst first", () => {
+    const recent = [
+      { keys: ["/a"], clicks: 0, impressions: 0, ctr: 0, position: 12 },
+      { keys: ["/b"], clicks: 0, impressions: 0, ctr: 0, position: 4 },
+      { keys: ["/c"], clicks: 0, impressions: 0, ctr: 0, position: 8 },
+    ];
+    const prior = [
+      { keys: ["/a"], clicks: 0, impressions: 0, ctr: 0, position: 5 }, // +7 worse
+      { keys: ["/b"], clicks: 0, impressions: 0, ctr: 0, position: 3 }, // +1 (ignored)
+      { keys: ["/c"], clicks: 0, impressions: 0, ctr: 0, position: 3 }, // +5 worse
+    ];
+    const d = detectDeclines(recent, prior, 3);
+    expect(d.map((x) => x.key)).toEqual(["/a", "/c"]);
+    expect(d[0].delta).toBe(7);
+  });
+
+  it("ignores keys absent from either period", () => {
+    const d = detectDeclines(
+      [{ keys: ["/x"], clicks: 0, impressions: 0, ctr: 0, position: 20 }],
+      [{ keys: ["/y"], clicks: 0, impressions: 0, ctr: 0, position: 2 }],
+      3,
+    );
+    expect(d).toHaveLength(0);
   });
 });
