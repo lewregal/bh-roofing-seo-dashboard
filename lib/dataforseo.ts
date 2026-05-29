@@ -60,8 +60,6 @@ export function aggregateKeyword(
   return { keyword, grid, avgRank, pctTop3, competitors };
 }
 
-// Task 8: Live query + grid scan
-
 const ENDPOINT = "https://api.dataforseo.com/v3/serp/google/maps/live/advanced";
 
 function authHeader(): string {
